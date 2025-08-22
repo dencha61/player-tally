@@ -7,41 +7,36 @@
 <style>
   :root{
     --bg:#0f0f12; --card:#1a1d22; --muted:#a6b0bd; --border:#2a2f36; --text:#e9eef4;
-    --ok:#2e7d32; --warn:#c62828; --bar:#101317; --barFill:#4caf50;
+    --ok:#2e7d32; --warn:#c62828; --sel:#2b6cb0;
   }
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);margin:0}
   header,footer{background:var(--card);padding:12px;position:sticky;z-index:10}
   header{top:0;border-bottom:1px solid var(--border)}footer{bottom:0;border-top:1px solid var(--border)}
   h1{margin:0;font-size:18px}
-  .controls{display:grid;grid-template-columns:1fr 70px 1fr auto auto auto auto;gap:8px;margin-top:8px;align-items:center}
+  .controls{display:grid;grid-template-columns:1fr 70px 1fr auto auto auto auto auto;gap:8px;margin-top:8px;align-items:center}
   input[type=text], input[type=number], select{padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff;width:100%}
   input::placeholder{color:#758092}
   button{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#2a2f36;color:#fff;cursor:pointer}
+  .ghost{background:transparent}
+  .primary{background:var(--ok); border-color:#246a29; color:#fff; font-weight:700;}
   #grid{display:grid;gap:10px;padding:12px}
-  .tile{padding:12px;border-radius:12px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--border);background:var(--card);transition:background .2s ease;}
-  .tile.goal-met{background:rgba(46,125,50,.85);color:#fff;border-color:rgba(46,125,50,.9);}
-  .tile.goal-miss{background:var(--card);border-color:rgba(198,40,40,.6);}
-  .tile-header{display:flex;justify-content:space-between;align-items:center;gap:8px}
-  .name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .meta-line{display:flex;flex-wrap:wrap;gap:6px}
-  .pill{font-size:12px;color:#e8eef4;background:#101317;border:1px solid var(--border);padding:2px 8px;border-radius:999px}
-  .tile.goal-met .pill{background:rgba(0,0,0,.25);}
-  .count{background:#101317;padding:4px 10px;border-radius:999px;font-variant-numeric:tabular-nums}
-  .tile.goal-met .count{background:rgba(0,0,0,.3);}
-  .tile-actions{display:flex;gap:8px;flex-wrap:wrap}
-  .tile-actions button{flex:1}
-  .progress{display:flex;flex-direction:column;gap:6px}
-  .bar{height:8px;background:var(--bar);border:1px solid var(--border);border-radius:999px;overflow:hidden}
-  .fill{height:100%;width:0%}
-  .progress-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
-  .tile.goal-met .progress-meta{color:#e0f2e9;}
-  .progress-meta b{color:var(--text)}
-  .tile.goal-met .progress-meta b{color:#fff;}
-  .statbar{display:flex;gap:12px;justify-content:space-around;flex-wrap:wrap}
-  .stat{background:var(--card);padding:6px 10px;border-radius:8px;border:1px solid var(--border)}
+  /* 3 columns max; responsive down to 2 and 1 */
+  @media (min-width: 800px){ #grid{ grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 520px) and (max-width: 799px){ #grid{ grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 519px){ #grid{ grid-template-columns: 1fr; } }
+  /* Name-only tile */
+  .tile{padding:14px;border-radius:12px;border:1px solid var(--border);background:var(--card);
+        display:flex;align-items:center;justify-content:center;min-height:56px;
+        user-select:none; -webkit-user-select:none; touch-action:manipulation; cursor:pointer; transition:transform .02s ease, background .15s ease, border-color .15s ease; }
+  .tile:active{ transform:scale(.98); }
+  .tile .name{font-weight:800; letter-spacing:.2px; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%;}
+  /* Goal met = green background; else normal */
+  .tile.goal-met{ background: rgba(46,125,50,.85); border-color: rgba(46,125,50,.9); color:#fff; }
+  /* Selection overlay */
+  .tile.selected{ outline: 2px solid var(--sel); box-shadow: 0 0 0 2px var(--sel) inset; }
+  /* Filters/labels */
   .goal-badge{font-size:12px;color:var(--muted)}
-  /* Toggle */
   .toggle { display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:#14171b; }
   .toggle input { appearance:none; width:42px; height:24px; background:#333842; border-radius:999px; position:relative; outline:none; border:1px solid #2a2f36; }
   .toggle input::after { content:''; position:absolute; width:18px; height:18px; top:2px; left:2px; border-radius:999px; background:#cfd6df; transition:transform .2s ease; }
@@ -51,9 +46,9 @@
   /* Danger */
   .danger { background:#8b2a2a; border-color:#7a2323; }
   .danger:hover { filter:brightness(1.05); }
-  @media (max-width: 780px){
-    .controls{grid-template-columns:1fr 64px 1fr auto auto auto auto}
-  }
+  .hint{color:var(--muted); font-size:12px; margin-top:6px;}
+  .statbar{display:flex;gap:12px;justify-content:space-around;flex-wrap:wrap}
+  .stat{background:var(--card);padding:6px 10px;border-radius:8px;border:1px solid var(--border)}
 </style>
 </head>
 <body>
@@ -64,7 +59,7 @@
     <input id="numInput" type="number" placeholder="#" min="0" inputmode="numeric" />
     <input id="posInput" type="text" placeholder="Positions (e.g., OB, RB, WR or ALL)" inputmode="text" />
     <select id="posFilter">
-      <option value="">Filter by Pos: Any</option>
+      <option value="">Filter: Any</option>
       <option>OB</option><option>RB</option><option>WR</option><option>TE</option><option>C</option>
       <option>OL</option><option>DL</option><option>CB</option><option>LB</option><option>S</option>
       <option>ALL</option>
@@ -73,17 +68,21 @@
       <input id="hideMet" type="checkbox" />
       <span>Only below 15</span>
     </label>
+    <button id="bulkAddBtn" type="button" class="primary" title="Add +1 to all selected">Add + Selected</button>
+    <button id="clearSelBtn" type="button" class="ghost" title="Clear selection">Clear Sel</button>
     <button id="resetBtn" type="button" title="Zero all counts">Reset</button>
     <button id="clearBtn" type="button" class="danger" title="Remove all players and history">Clear All</button>
     <button id="exportBtn" type="button" title="Export CSV">Export</button>
     <button id="fakeSubmit" type="submit" style="display:none">Submit</button>
   </form>
+  <div class="hint">Tip: tap tiles to select multiple players, then use <b>Add + Selected</b>.</div>
 </header>
 <main id="grid"></main>
 <footer>
   <div class="statbar">
     <div class="stat">Players: <span id="playerCount">0</span></div>
     <div class="stat">Total Plays: <span id="totalPlays">0</span></div>
+    <div class="stat">Selected: <span id="selectedCount">0</span></div>
     <div class="stat">Need ≥15: <span id="needCount">0</span></div>
     <div class="stat">Last: <span id="lastAction">—</span></div>
   </div>
@@ -92,7 +91,6 @@
 <script>
 (function(){
   const GOAL = 15;
-  const POS_LIST = ["OB","RB","WR","TE","C","OL","DL","CB","LB","S","ALL"];
   const grid = document.getElementById('grid');
   const form = document.getElementById('addForm');
   const nameInput = document.getElementById('nameInput');
@@ -100,17 +98,21 @@
   const posInput = document.getElementById('posInput');
   const posFilter = document.getElementById('posFilter');
   const hideMet = document.getElementById('hideMet');
+  const bulkAddBtn = document.getElementById('bulkAddBtn');
+  const clearSelBtn = document.getElementById('clearSelBtn');
   const resetBtn = document.getElementById('resetBtn');
   const clearBtn = document.getElementById('clearBtn');
   const exportBtn = document.getElementById('exportBtn');
   const playerCount = document.getElementById('playerCount');
   const totalPlays = document.getElementById('totalPlays');
+  const selectedCount = document.getElementById('selectedCount');
   const lastAction = document.getElementById('lastAction');
   const needCount = document.getElementById('needCount');
 
   // State: map by name to {count, num, pos: string[]}
   let state = { players:{}, order:[], history:[] };
   let prefs = { hideMet: false, posFilter: "" };
+  let selection = new Set(); // selected player names
   const KEY = "player_tally_v1";
   const PREFS_KEY = "player_tally_prefs_v1";
 
@@ -144,29 +146,24 @@
   function renderStats(){
     playerCount.textContent = state.order.length;
     totalPlays.textContent = state.order.reduce((a,n)=> a + (state.players[n]?.count||0), 0);
+    selectedCount.textContent = selection.size;
     const h = state.history.at(-1);
-    lastAction.textContent = h ? (h.delta>0?'+':'-') + '1 ' + h.name : '—';
+    lastAction.textContent = h ? (h.delta>0?'+':'-') + (h.bulk?h.bulk:'1') + ' ' + (h.bulk?'players':' '+h.name) : '—';
     const need = state.order.reduce((acc,n)=> acc + ((state.players[n]?.count||0) < GOAL ? 1 : 0), 0);
     needCount.textContent = need;
   }
 
-  function pct(v){ return Math.max(0, Math.min(100, (v/GOAL)*100)); }
-
-  function posPills(posArr){
-    const frag = document.createDocumentFragment();
-    (posArr||[]).forEach(p => {
-      const s = document.createElement('span');
-      s.className = 'pill';
-      s.textContent = p;
-      frag.appendChild(s);
-    });
-    if (!posArr || posArr.length === 0) {
-      const s = document.createElement('span');
-      s.className = 'pill';
-      s.textContent = '—';
-      frag.appendChild(s);
+  function normalizeName(s){ return (s||'').replace(/\s+/g,' ').trim(); }
+  function normalizePositions(raw){
+    if (!raw) return [];
+    const arr = String(raw).split(/[,\u{2044}\/;]+/u).map(s=>s.trim()).filter(Boolean);
+    const dedup = [];
+    const seen = new Set();
+    for (let p of arr) {
+      const up = p.toUpperCase();
+      if (!seen.has(up)) { seen.add(up); dedup.push(up); }
     }
-    return frag;
+    return dedup.slice(0, 8);
   }
 
   function createTile(name, data){
@@ -174,43 +171,13 @@
     const met = count >= GOAL;
     const d = document.createElement('div');
     d.className = 'tile ' + (met ? 'goal-met' : 'goal-miss');
-
-    const head = document.createElement('div'); head.className = 'tile-header';
+    if (selection.has(name)) d.classList.add('selected');
     const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = name;
-    const ct = document.createElement('div'); ct.className = 'count'; ct.textContent = count;
-    head.append(nm, ct);
-
-    const metaLine = document.createElement('div'); metaLine.className = 'meta-line';
-    const numStr = (data.num !== '' && data.num != null) ? `#${data.num}` : '#—';
-    const numPill = document.createElement('span'); numPill.className='pill'; numPill.textContent = numStr;
-    metaLine.appendChild(numPill);
-    metaLine.appendChild(posPills(data.pos));
-
-    const actions = document.createElement('div'); actions.className = 'tile-actions';
-    const plus = document.createElement('button'); plus.type='button'; plus.textContent = '+ Play';
-    plus.onclick = ()=>change(name,+1);
-    const minus = document.createElement('button'); minus.type='button'; minus.textContent = '−';
-    minus.onclick = ()=>change(name,-1);
-    const edit = document.createElement('button'); edit.type='button'; edit.textContent = 'Edit';
-    edit.onclick = ()=>editMeta(name);
-    actions.append(plus, minus, edit);
-
-    const prog = document.createElement('div'); prog.className='progress';
-    const bar = document.createElement('div'); bar.className = 'bar';
-    const fill = document.createElement('div'); fill.className='fill';
-    fill.style.width = pct(count) + '%';
-    fill.style.background = met ? 'var(--ok)' : 'var(--barFill)';
-    bar.append(fill);
-
-    const pmeta = document.createElement('div'); pmeta.className='progress-meta';
-    const left = Math.max(0, GOAL - count);
-    const leftEl = document.createElement('div'); leftEl.innerHTML = `Remaining <b>${left}</b>`;
-    const ratioEl = document.createElement('div'); ratioEl.innerHTML = `<b>${Math.min(count, GOAL)}</b>/<b>${GOAL}</b>`;
-    pmeta.append(leftEl, ratioEl);
-
-    prog.append(bar, pmeta);
-
-    d.append(head, metaLine, actions, prog);
+    d.append(nm);
+    d.addEventListener('click', () => {
+      if (selection.has(name)) selection.delete(name); else selection.add(name);
+      render(); // re-render just to update selected states (simple)
+    });
     return d;
   }
 
@@ -218,8 +185,7 @@
     grid.innerHTML = '';
     state.order.forEach(n=> {
       const data = state.players[n] || {count:0,num:'',pos:[]};
-      if (prefs.hideMet && (data.count||0) >= GOAL) return; // filter out met-goal players
-      // Position filter
+      if (prefs.hideMet && (data.count||0) >= GOAL) return;
       if (prefs.posFilter) {
         const posArr = data.pos || [];
         const hasAll = posArr.includes('ALL');
@@ -240,21 +206,21 @@
     state.players[name].count = next;
     state.history.push({name, delta: applied});
     if(state.history.length > 500) state.history.shift();
-    render(); save();
   }
 
-  function normalizeName(s){ return (s||'').replace(/\s+/g,' ').trim(); }
-  function normalizePositions(raw){
-    if (!raw) return [];
-    const arr = String(raw).split(/[,\u{2044}\/;]+/u).map(s=>s.trim()).filter(Boolean);
-    const dedup = [];
-    const seen = new Set();
-    for (let p of arr) {
-      const up = p.toUpperCase();
-      if (!seen.has(up)) { seen.add(up); dedup.push(up); }
-    }
-    // Keep only from allowed list if specified; allow ALL explicitly
-    return dedup.map(x => x).slice(0, 8);
+  function bulkAdd(){
+    if (selection.size === 0) return;
+    let appliedCount = 0;
+    selection.forEach(n => {
+      if(state.players[n]){
+        const before = state.players[n].count||0;
+        state.players[n].count = Math.max(0, before + 1);
+        appliedCount += 1;
+      }
+    });
+    state.history.push({ name: 'bulk', delta: +1, bulk: appliedCount });
+    if(state.history.length > 500) state.history.shift();
+    save(); render();
   }
 
   function addPlayer(name, num, posRaw){
@@ -265,34 +231,31 @@
     const positions = normalizePositions(posRaw);
     state.players[name] = { count: 0, num: (num??'') === '' ? '' : String(num), pos: positions };
     state.order.push(name);
-    render(); save();
-  }
-
-  function editMeta(name){
-    const d = state.players[name];
-    if(!d) return;
-    const num = prompt(`Edit jersey # for ${name}`, d.num || '');
-    if (num === null) return; // cancelled
-    const pos = prompt(`Edit positions (comma/semicolon/slash separated) for ${name}\nAllowed examples: OB,RB,WR,TE,C,OL,DL,CB,LB,S,ALL`, (d.pos||[]).join(', '));
-    if (pos === null) return;
-    d.num = (num||'').trim();
-    d.pos = normalizePositions(pos);
-    render(); save();
+    save(); render();
   }
 
   function reset(){
     if(confirm('Zero all counts (keep names)?')){
       state.order.forEach(n=> { if(state.players[n]) state.players[n].count = 0; });
       state.history = [];
-      render(); save();
+      save(); render();
     }
   }
 
   function clearAll(){
     if(!confirm('Remove ALL players and history? This cannot be undone.')) return;
     state = { players:{}, order:[], history:[] };
+    selection.clear();
     localStorage.removeItem(KEY);
-    render(); save();
+    save(); render();
+  }
+
+  function clearSelection(){
+    selection.clear();
+    renderStats();
+    // only update outlines without full re-render
+    document.querySelectorAll('.tile.selected').forEach(el=> el.classList.remove('selected'));
+    selectedCount.textContent = 0;
   }
 
   function exportCSV(){
@@ -324,9 +287,14 @@
     }
   });
 
-  // Toggles & Filters
+  // Toggles & Buttons
   hideMet.addEventListener('change', () => { prefs.hideMet = hideMet.checked; savePrefs(); render(); });
   posFilter.addEventListener('change', () => { prefs.posFilter = posFilter.value; savePrefs(); render(); });
+  bulkAddBtn.addEventListener('click', bulkAdd);
+  clearSelBtn.addEventListener('click', clearSelection);
+  resetBtn.onclick = reset;
+  clearBtn.onclick = clearAll;
+  exportBtn.onclick = exportCSV;
 
   // Init
   load(); loadPrefs();

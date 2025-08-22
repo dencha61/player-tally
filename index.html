@@ -15,7 +15,7 @@
   header{top:0;border-bottom:1px solid var(--border)}footer{bottom:0;border-top:1px solid var(--border)}
   h1{margin:0;font-size:18px}
   .controls{display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap}
-  input[type=text]{flex:1 1 240px;padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff}
+  input[type=text]{flex:1 1 200px;padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff}
   button{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#2a2f36;color:#fff;cursor:pointer}
   #grid{display:grid;gap:10px;padding:12px}
   .tile{padding:12px;border-radius:12px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--border);background:var(--card);transition:background .2s ease;}
@@ -44,6 +44,9 @@
   .toggle input:checked { background:#2e7d32; }
   .toggle input:checked::after { transform:translateX(18px); }
   .toggle span { font-size:13px; color:var(--muted); }
+  /* Danger button style */
+  .danger { background:#8b2a2a; border-color:#7a2323; }
+  .danger:hover { filter:brightness(1.05); }
 </style>
 </head>
 <body>
@@ -55,7 +58,8 @@
       <input id="hideMet" type="checkbox" />
       <span>Show only below 15</span>
     </label>
-    <button id="resetBtn" type="button" title="Reset all counts to 0">Reset</button>
+    <button id="resetBtn" type="button" title="Zero all counts">Reset</button>
+    <button id="clearBtn" type="button" class="danger" title="Remove all players and history">Clear All</button>
     <button id="exportBtn" type="button" title="Export CSV">Export</button>
     <button id="fakeSubmit" type="submit" style="display:none">Submit</button>
   </form>
@@ -78,6 +82,7 @@
   const input = document.getElementById('playerInput');
   const hideMet = document.getElementById('hideMet');
   const resetBtn = document.getElementById('resetBtn');
+  const clearBtn = document.getElementById('clearBtn');
   const exportBtn = document.getElementById('exportBtn');
   const playerCount = document.getElementById('playerCount');
   const totalPlays = document.getElementById('totalPlays');
@@ -173,18 +178,26 @@
   }
 
   function reset(){
-    if(confirm('Reset all counts?')){
+    if(confirm('Zero all counts (keep names)?')){
       Object.keys(state.players).forEach(k=> state.players[k] = 0);
       state.history = [];
       render(); save();
     }
   }
 
+  function clearAll(){
+    if(!confirm('Remove ALL players and history? This cannot be undone.')) return;
+    state = { players:{}, order:[], history:[] };
+    // Remove storage to free space and ensure a clean slate
+    localStorage.removeItem(KEY);
+    render(); save();
+  }
+
   function exportCSV(){
     const rows = [['Player','Plays','RemainingTo15','MetGoal']];
     state.order.forEach(n=>{
       const c = state.players[n] || 0;
-      rows.push([n, String(c), String(Math.max(0, GOAL - c)), c>=GOAL ? 'Yes':'No']);
+      rows.push([n, String(c), String(Math.max(0, 15 - c)), c>=15 ? 'Yes':'No']);
     });
     const csv = rows.map(r => r.map(cell => /[",\n]/.test(cell) ? '"' + cell.replace(/"/g,'""') + '"' : cell).join(',')).join('\n');
     const blob = new Blob([csv], {type:'text/csv'});
@@ -203,12 +216,11 @@
     if(names.length){ names.forEach(addPlayer); input.value=''; }
   });
 
-  // Toggle
-  hideMet.addEventListener('change', () => {
-    prefs.hideMet = hideMet.checked;
-    savePrefs();
-    render();
-  });
+  // Toggle & Buttons
+  hideMet.addEventListener('change', () => { prefs.hideMet = hideMet.checked; savePrefs(); render(); });
+  resetBtn.onclick = reset;
+  clearBtn.onclick = clearAll;
+  exportBtn.onclick = exportCSV;
 
   // Init
   load(); loadPrefs();

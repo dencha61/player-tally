@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Player Play Tally</title>
+<style>
+  :root{
+    --bg:#0f0f12; --card:#1a1d22; --muted:#a6b0bd; --border:#2a2f36; --text:#e9eef4;
+    --ok:#2e7d32; --warn:#c62828; --bar:#101317; --barFill:#4caf50;
+  }
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);margin:0}
+  header,footer{background:var(--card);padding:12px;position:sticky;z-index:10}
+  header{top:0;border-bottom:1px solid var(--border)}footer{bottom:0;border-top:1px solid var(--border)}
+  h1{margin:0;font-size:18px}
+  .controls{display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap}
+  input[type=text]{flex:1 1 240px;padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff}
+  button{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#2a2f36;color:#fff;cursor:pointer}
+  #grid{display:grid;gap:10px;padding:12px}
+  .tile{background:var(--card);padding:12px;border-radius:12px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--border)}
+  .tile.goal-met{border-color:rgba(76,175,80,.6); box-shadow:0 0 0 1px rgba(76,175,80,.15) inset}
+  .tile.goal-miss{border-color:rgba(198,40,40,.6)}
+  .tile-header{display:flex;justify-content:space-between;align-items:center}
+  .name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .count{background:#101317;padding:4px 10px;border-radius:999px;font-variant-numeric:tabular-nums}
+  .tile-actions{display:flex;gap:8px}
+  .tile-actions button{flex:1}
+  .progress{display:flex;flex-direction:column;gap:6px}
+  .bar{height:8px;background:var(--bar);border:1px solid var(--border);border-radius:999px;overflow:hidden}
+  .fill{height:100%;width:0%}
+  .meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+  .meta b{color:var(--text)}
+  .statbar{display:flex;gap:12px;justify-content:space-around;flex-wrap:wrap}
+  .stat{background:var(--card);padding:6px 10px;border-radius:8px;border:1px solid var(--border)}
+  .goal-badge{font-size:12px;color:var(--muted)}
+  /* Toggle */
+  .toggle { display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:#14171b; }
+  .toggle input { appearance:none; width:42px; height:24px; background:#333842; border-radius:999px; position:relative; outline:none; border:1px solid #2a2f36; }
+  .toggle input::after { content:''; position:absolute; width:18px; height:18px; top:2px; left:2px; border-radius:999px; background:#cfd6df; transition:transform .2s ease; }
+  .toggle input:checked { background:#2e7d32; }
+  .toggle input:checked::after { transform:translateX(18px); }
+  .toggle span { font-size:13px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Player Play Tally <span class="goal-badge">(goal: 15 plays each)</span></h1>
+  <form id="addForm" class="controls" action="#" method="get" autocomplete="off" novalidate>
+    <input id="playerInput" type="text" placeholder="Type a name and press Return…" inputmode="text" autocapitalize="words" />
+    <label class="toggle" title="Show only players below 15">
+      <input id="hideMet" type="checkbox" />
+      <span>Show only below 15</span>
+    </label>
+    <button id="resetBtn" type="button" title="Reset all counts to 0">Reset</button>
+    <button id="exportBtn" type="button" title="Export CSV">Export</button>
+    <button id="fakeSubmit" type="submit" style="display:none">Submit</button>
+  </form>
+</header>
+<main id="grid"></main>
+<footer>
+  <div class="statbar">
+    <div class="stat">Players: <span id="playerCount">0</span></div>
+    <div class="stat">Total Plays: <span id="totalPlays">0</span></div>
+    <div class="stat">Need ≥15: <span id="needCount">0</span></div>
+    <div class="stat">Last: <span id="lastAction">—</span></div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  const GOAL = 15;
+  const grid = document.getElementById('grid');
+  const form = document.getElementById('addForm');
+  const input = document.getElementById('playerInput');
+  const hideMet = document.getElementById('hideMet');
+  const resetBtn = document.getElementById('resetBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const playerCount = document.getElementById('playerCount');
+  const totalPlays = document.getElementById('totalPlays');
+  const lastAction = document.getElementById('lastAction');
+  const needCount = document.getElementById('needCount');
+
+  let state = { players:{}, order:[], history:[] };
+  let prefs = { hideMet: false };
+  const KEY = "player_tally_v1";
+  const PREFS_KEY = "player_tally_prefs_v1";
+
+  function save(){ localStorage.setItem(KEY, JSON.stringify(state)); renderStats(); }
+  function load(){ const raw = localStorage.getItem(KEY); if(raw){ try{ state = JSON.parse(raw); }catch(e){} } }
+  function savePrefs(){ localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
+  function loadPrefs(){ const raw = localStorage.getItem(PREFS_KEY); if(raw){ try{ prefs = JSON.parse(raw); }catch(e){} } }
+
+  function renderStats(){
+    playerCount.textContent = state.order.length;
+    totalPlays.textContent = Object.values(state.players).reduce((a,b)=>a+b,0);
+    const h = state.history.at(-1);
+    lastAction.textContent = h ? (h.delta>0?'+':'-') + '1 ' + h.name : '—';
+    const need = state.order.reduce((acc,n)=> acc + ((state.players[n]||0) < GOAL ? 1 : 0), 0);
+    needCount.textContent = need;
+  }
+
+  function pct(v){ return Math.max(0, Math.min(100, (v/GOAL)*100)); }
+
+  function createTile(name, count){
+    const met = count >= GOAL;
+    const d = document.createElement('div');
+    d.className = 'tile ' + (met ? 'goal-met' : 'goal-miss');
+
+    const head = document.createElement('div'); head.className = 'tile-header';
+    const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = name;
+    const ct = document.createElement('div'); ct.className = 'count'; ct.textContent = count;
+    head.append(nm, ct);
+
+    const actions = document.createElement('div'); actions.className = 'tile-actions';
+    const plus = document.createElement('button'); plus.type='button'; plus.textContent = '+ Play';
+    plus.onclick = ()=>change(name,+1);
+    const minus = document.createElement('button'); minus.type='button'; minus.textContent = '−';
+    minus.onclick = ()=>change(name,-1);
+    actions.append(plus, minus);
+
+    const prog = document.createElement('div'); prog.className='progress';
+    const bar = document.createElement('div'); bar.className = 'bar';
+    const fill = document.createElement('div'); fill.className='fill';
+    fill.style.width = pct(count) + '%';
+    fill.style.background = met ? 'var(--ok)' : 'var(--barFill)';
+    bar.append(fill);
+
+    const meta = document.createElement('div'); meta.className='meta';
+    const left = Math.max(0, GOAL - count);
+    const leftEl = document.createElement('div'); leftEl.innerHTML = `Remaining <b>${left}</b>`;
+    const ratioEl = document.createElement('div'); ratioEl.innerHTML = `<b>${Math.min(count, GOAL)}</b>/<b>${GOAL}</b>`;
+    meta.append(leftEl, ratioEl);
+
+    prog.append(bar, meta);
+
+    d.append(head, actions, prog);
+    return d;
+  }
+
+  function render(){
+    grid.innerHTML = '';
+    state.order.forEach(n=> {
+      const c = state.players[n]||0;
+      if (prefs.hideMet && c >= GOAL) return; // filter out met-goal players
+      grid.appendChild(createTile(n, c));
+    });
+    renderStats();
+  }
+
+  function change(name, delta){
+    if(state.players[name] == null) return;
+    const next = Math.max(0, (state.players[name]||0) + delta);
+    const applied = next - (state.players[name]||0);
+    if(!applied) return;
+    state.players[name] = next;
+    state.history.push({name, delta: applied});
+    if(state.history.length > 500) state.history.shift();
+    render(); save();
+  }
+
+  function addPlayer(name){
+    name = name.replace(/\s+/g,' ').trim();
+    if(!name) return;
+    const exists = state.order.some(n=> n.toLowerCase() === name.toLowerCase());
+    if(exists) return;
+    state.players[name] = 0;
+    state.order.push(name);
+    render(); save();
+  }
+
+  function reset(){
+    if(confirm('Reset all counts?')){
+      Object.keys(state.players).forEach(k=> state.players[k] = 0);
+      state.history = [];
+      render(); save();
+    }
+  }
+
+  function exportCSV(){
+    const rows = [['Player','Plays','RemainingTo15','MetGoal']];
+    state.order.forEach(n=>{
+      const c = state.players[n] || 0;
+      rows.push([n, String(c), String(Math.max(0, GOAL - c)), c>=GOAL ? 'Yes':'No']);
+    });
+    const csv = rows.map(r => r.map(cell => /[",\n]/.test(cell) ? '"' + cell.replace(/"/g,'""') + '"' : cell).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'player_tally.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Form submit captures Return on iOS reliably
+  form.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const value = input.value || '';
+    const names = value.split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
+    if(names.length){ names.forEach(addPlayer); input.value=''; }
+  });
+
+  // Toggle
+  hideMet.addEventListener('change', () => {
+    prefs.hideMet = hideMet.checked;
+    savePrefs();
+    render();
+  });
+
+  // Init
+  load(); loadPrefs();
+  hideMet.checked = !!prefs.hideMet;
+  render();
+  setTimeout(()=> input.focus({preventScroll:true}), 200);
+})();
+</script>
+</body>
+</html>

@@ -14,26 +14,30 @@
   header,footer{background:var(--card);padding:12px;position:sticky;z-index:10}
   header{top:0;border-bottom:1px solid var(--border)}footer{bottom:0;border-top:1px solid var(--border)}
   h1{margin:0;font-size:18px}
-  .controls{display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap}
-  input[type=text]{flex:1 1 200px;padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff}
+  .controls{display:grid;grid-template-columns:1fr 70px 1fr auto auto auto auto;gap:8px;margin-top:8px;align-items:center}
+  input[type=text], input[type=number], select{padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff;width:100%}
+  input::placeholder{color:#758092}
   button{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#2a2f36;color:#fff;cursor:pointer}
   #grid{display:grid;gap:10px;padding:12px}
   .tile{padding:12px;border-radius:12px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--border);background:var(--card);transition:background .2s ease;}
   .tile.goal-met{background:rgba(46,125,50,.85);color:#fff;border-color:rgba(46,125,50,.9);}
   .tile.goal-miss{background:var(--card);border-color:rgba(198,40,40,.6);}
-  .tile-header{display:flex;justify-content:space-between;align-items:center}
+  .tile-header{display:flex;justify-content:space-between;align-items:center;gap:8px}
   .name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .meta-line{display:flex;flex-wrap:wrap;gap:6px}
+  .pill{font-size:12px;color:#e8eef4;background:#101317;border:1px solid var(--border);padding:2px 8px;border-radius:999px}
+  .tile.goal-met .pill{background:rgba(0,0,0,.25);}
   .count{background:#101317;padding:4px 10px;border-radius:999px;font-variant-numeric:tabular-nums}
   .tile.goal-met .count{background:rgba(0,0,0,.3);}
-  .tile-actions{display:flex;gap:8px}
+  .tile-actions{display:flex;gap:8px;flex-wrap:wrap}
   .tile-actions button{flex:1}
   .progress{display:flex;flex-direction:column;gap:6px}
   .bar{height:8px;background:var(--bar);border:1px solid var(--border);border-radius:999px;overflow:hidden}
   .fill{height:100%;width:0%}
-  .meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
-  .tile.goal-met .meta{color:#e0f2e9;}
-  .meta b{color:var(--text)}
-  .tile.goal-met .meta b{color:#fff;}
+  .progress-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+  .tile.goal-met .progress-meta{color:#e0f2e9;}
+  .progress-meta b{color:var(--text)}
+  .tile.goal-met .progress-meta b{color:#fff;}
   .statbar{display:flex;gap:12px;justify-content:space-around;flex-wrap:wrap}
   .stat{background:var(--card);padding:6px 10px;border-radius:8px;border:1px solid var(--border)}
   .goal-badge{font-size:12px;color:var(--muted)}
@@ -44,19 +48,30 @@
   .toggle input:checked { background:#2e7d32; }
   .toggle input:checked::after { transform:translateX(18px); }
   .toggle span { font-size:13px; color:var(--muted); }
-  /* Danger button style */
+  /* Danger */
   .danger { background:#8b2a2a; border-color:#7a2323; }
   .danger:hover { filter:brightness(1.05); }
+  @media (max-width: 780px){
+    .controls{grid-template-columns:1fr 64px 1fr auto auto auto auto}
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>Player Play Tally <span class="goal-badge">(goal: 15 plays each)</span></h1>
   <form id="addForm" class="controls" action="#" method="get" autocomplete="off" novalidate>
-    <input id="playerInput" type="text" placeholder="Type a name and press Return…" inputmode="text" autocapitalize="words" />
+    <input id="nameInput" type="text" placeholder="Player name — press Return to add" inputmode="text" autocapitalize="words" />
+    <input id="numInput" type="number" placeholder="#" min="0" inputmode="numeric" />
+    <input id="posInput" type="text" placeholder="Positions (e.g., OB, RB, WR or ALL)" inputmode="text" />
+    <select id="posFilter">
+      <option value="">Filter by Pos: Any</option>
+      <option>OB</option><option>RB</option><option>WR</option><option>TE</option><option>C</option>
+      <option>OL</option><option>DL</option><option>CB</option><option>LB</option><option>S</option>
+      <option>ALL</option>
+    </select>
     <label class="toggle" title="Show only players below 15">
       <input id="hideMet" type="checkbox" />
-      <span>Show only below 15</span>
+      <span>Only below 15</span>
     </label>
     <button id="resetBtn" type="button" title="Zero all counts">Reset</button>
     <button id="clearBtn" type="button" class="danger" title="Remove all players and history">Clear All</button>
@@ -77,9 +92,13 @@
 <script>
 (function(){
   const GOAL = 15;
+  const POS_LIST = ["OB","RB","WR","TE","C","OL","DL","CB","LB","S","ALL"];
   const grid = document.getElementById('grid');
   const form = document.getElementById('addForm');
-  const input = document.getElementById('playerInput');
+  const nameInput = document.getElementById('nameInput');
+  const numInput = document.getElementById('numInput');
+  const posInput = document.getElementById('posInput');
+  const posFilter = document.getElementById('posFilter');
   const hideMet = document.getElementById('hideMet');
   const resetBtn = document.getElementById('resetBtn');
   const clearBtn = document.getElementById('clearBtn');
@@ -89,28 +108,69 @@
   const lastAction = document.getElementById('lastAction');
   const needCount = document.getElementById('needCount');
 
+  // State: map by name to {count, num, pos: string[]}
   let state = { players:{}, order:[], history:[] };
-  let prefs = { hideMet: false };
+  let prefs = { hideMet: false, posFilter: "" };
   const KEY = "player_tally_v1";
   const PREFS_KEY = "player_tally_prefs_v1";
 
   function save(){ localStorage.setItem(KEY, JSON.stringify(state)); renderStats(); }
-  function load(){ const raw = localStorage.getItem(KEY); if(raw){ try{ state = JSON.parse(raw); }catch(e){} } }
+  function load(){
+    const raw = localStorage.getItem(KEY);
+    if(raw){
+      try{ state = JSON.parse(raw); }catch(e){}
+      if(state && state.players){
+        for(const n of Object.keys(state.players)){
+          const v = state.players[n];
+          if (typeof v === 'number') {
+            state.players[n] = { count: v, num: '', pos: [] };
+          } else {
+            const obj = state.players[n];
+            obj.count = Number(obj.count||0);
+            obj.num = (obj.num ?? '') === '' ? '' : String(obj.num);
+            if (Array.isArray(obj.pos)) {
+              obj.pos = normalizePositions(obj.pos.join(','));
+            } else {
+              obj.pos = normalizePositions(String(obj.pos ?? ''));
+            }
+          }
+        }
+      }
+    }
+  }
   function savePrefs(){ localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
   function loadPrefs(){ const raw = localStorage.getItem(PREFS_KEY); if(raw){ try{ prefs = JSON.parse(raw); }catch(e){} } }
 
   function renderStats(){
     playerCount.textContent = state.order.length;
-    totalPlays.textContent = Object.values(state.players).reduce((a,b)=>a+b,0);
+    totalPlays.textContent = state.order.reduce((a,n)=> a + (state.players[n]?.count||0), 0);
     const h = state.history.at(-1);
     lastAction.textContent = h ? (h.delta>0?'+':'-') + '1 ' + h.name : '—';
-    const need = state.order.reduce((acc,n)=> acc + ((state.players[n]||0) < GOAL ? 1 : 0), 0);
+    const need = state.order.reduce((acc,n)=> acc + ((state.players[n]?.count||0) < GOAL ? 1 : 0), 0);
     needCount.textContent = need;
   }
 
   function pct(v){ return Math.max(0, Math.min(100, (v/GOAL)*100)); }
 
-  function createTile(name, count){
+  function posPills(posArr){
+    const frag = document.createDocumentFragment();
+    (posArr||[]).forEach(p => {
+      const s = document.createElement('span');
+      s.className = 'pill';
+      s.textContent = p;
+      frag.appendChild(s);
+    });
+    if (!posArr || posArr.length === 0) {
+      const s = document.createElement('span');
+      s.className = 'pill';
+      s.textContent = '—';
+      frag.appendChild(s);
+    }
+    return frag;
+  }
+
+  function createTile(name, data){
+    const count = data.count||0;
     const met = count >= GOAL;
     const d = document.createElement('div');
     d.className = 'tile ' + (met ? 'goal-met' : 'goal-miss');
@@ -120,12 +180,20 @@
     const ct = document.createElement('div'); ct.className = 'count'; ct.textContent = count;
     head.append(nm, ct);
 
+    const metaLine = document.createElement('div'); metaLine.className = 'meta-line';
+    const numStr = (data.num !== '' && data.num != null) ? `#${data.num}` : '#—';
+    const numPill = document.createElement('span'); numPill.className='pill'; numPill.textContent = numStr;
+    metaLine.appendChild(numPill);
+    metaLine.appendChild(posPills(data.pos));
+
     const actions = document.createElement('div'); actions.className = 'tile-actions';
     const plus = document.createElement('button'); plus.type='button'; plus.textContent = '+ Play';
     plus.onclick = ()=>change(name,+1);
     const minus = document.createElement('button'); minus.type='button'; minus.textContent = '−';
     minus.onclick = ()=>change(name,-1);
-    actions.append(plus, minus);
+    const edit = document.createElement('button'); edit.type='button'; edit.textContent = 'Edit';
+    edit.onclick = ()=>editMeta(name);
+    actions.append(plus, minus, edit);
 
     const prog = document.createElement('div'); prog.className='progress';
     const bar = document.createElement('div'); bar.className = 'bar';
@@ -134,52 +202,87 @@
     fill.style.background = met ? 'var(--ok)' : 'var(--barFill)';
     bar.append(fill);
 
-    const meta = document.createElement('div'); meta.className='meta';
+    const pmeta = document.createElement('div'); pmeta.className='progress-meta';
     const left = Math.max(0, GOAL - count);
     const leftEl = document.createElement('div'); leftEl.innerHTML = `Remaining <b>${left}</b>`;
     const ratioEl = document.createElement('div'); ratioEl.innerHTML = `<b>${Math.min(count, GOAL)}</b>/<b>${GOAL}</b>`;
-    meta.append(leftEl, ratioEl);
+    pmeta.append(leftEl, ratioEl);
 
-    prog.append(bar, meta);
+    prog.append(bar, pmeta);
 
-    d.append(head, actions, prog);
+    d.append(head, metaLine, actions, prog);
     return d;
   }
 
   function render(){
     grid.innerHTML = '';
     state.order.forEach(n=> {
-      const c = state.players[n]||0;
-      if (prefs.hideMet && c >= GOAL) return; // filter out met-goal players
-      grid.appendChild(createTile(n, c));
+      const data = state.players[n] || {count:0,num:'',pos:[]};
+      if (prefs.hideMet && (data.count||0) >= GOAL) return; // filter out met-goal players
+      // Position filter
+      if (prefs.posFilter) {
+        const posArr = data.pos || [];
+        const hasAll = posArr.includes('ALL');
+        const match = hasAll || posArr.includes(prefs.posFilter);
+        if (!match) return;
+      }
+      grid.appendChild(createTile(n, data));
     });
     renderStats();
   }
 
   function change(name, delta){
-    if(state.players[name] == null) return;
-    const next = Math.max(0, (state.players[name]||0) + delta);
-    const applied = next - (state.players[name]||0);
+    if(!state.players[name]) return;
+    const current = state.players[name].count || 0;
+    const next = Math.max(0, current + delta);
+    const applied = next - current;
     if(!applied) return;
-    state.players[name] = next;
+    state.players[name].count = next;
     state.history.push({name, delta: applied});
     if(state.history.length > 500) state.history.shift();
     render(); save();
   }
 
-  function addPlayer(name){
-    name = name.replace(/\s+/g,' ').trim();
+  function normalizeName(s){ return (s||'').replace(/\s+/g,' ').trim(); }
+  function normalizePositions(raw){
+    if (!raw) return [];
+    const arr = String(raw).split(/[,\u{2044}\/;]+/u).map(s=>s.trim()).filter(Boolean);
+    const dedup = [];
+    const seen = new Set();
+    for (let p of arr) {
+      const up = p.toUpperCase();
+      if (!seen.has(up)) { seen.add(up); dedup.push(up); }
+    }
+    // Keep only from allowed list if specified; allow ALL explicitly
+    return dedup.map(x => x).slice(0, 8);
+  }
+
+  function addPlayer(name, num, posRaw){
+    name = normalizeName(name);
     if(!name) return;
     const exists = state.order.some(n=> n.toLowerCase() === name.toLowerCase());
     if(exists) return;
-    state.players[name] = 0;
+    const positions = normalizePositions(posRaw);
+    state.players[name] = { count: 0, num: (num??'') === '' ? '' : String(num), pos: positions };
     state.order.push(name);
+    render(); save();
+  }
+
+  function editMeta(name){
+    const d = state.players[name];
+    if(!d) return;
+    const num = prompt(`Edit jersey # for ${name}`, d.num || '');
+    if (num === null) return; // cancelled
+    const pos = prompt(`Edit positions (comma/semicolon/slash separated) for ${name}\nAllowed examples: OB,RB,WR,TE,C,OL,DL,CB,LB,S,ALL`, (d.pos||[]).join(', '));
+    if (pos === null) return;
+    d.num = (num||'').trim();
+    d.pos = normalizePositions(pos);
     render(); save();
   }
 
   function reset(){
     if(confirm('Zero all counts (keep names)?')){
-      Object.keys(state.players).forEach(k=> state.players[k] = 0);
+      state.order.forEach(n=> { if(state.players[n]) state.players[n].count = 0; });
       state.history = [];
       render(); save();
     }
@@ -188,18 +291,18 @@
   function clearAll(){
     if(!confirm('Remove ALL players and history? This cannot be undone.')) return;
     state = { players:{}, order:[], history:[] };
-    // Remove storage to free space and ensure a clean slate
     localStorage.removeItem(KEY);
     render(); save();
   }
 
   function exportCSV(){
-    const rows = [['Player','Plays','RemainingTo15','MetGoal']];
+    const rows = [['Name','Number','Positions','Plays','RemainingTo15','MetGoal']];
     state.order.forEach(n=>{
-      const c = state.players[n] || 0;
-      rows.push([n, String(c), String(Math.max(0, 15 - c)), c>=15 ? 'Yes':'No']);
+      const d = state.players[n] || {count:0,num:'',pos:[]};
+      const c = d.count || 0;
+      rows.push([n, d.num ?? '', (d.pos||[]).join('; '), String(c), String(Math.max(0, 15 - c)), c>=15 ? 'Yes':'No']);
     });
-    const csv = rows.map(r => r.map(cell => /[",\n]/.test(cell) ? '"' + cell.replace(/"/g,'""') + '"' : cell).join(',')).join('\n');
+    const csv = rows.map(r => r.map(cell => /[",\n]/.test(cell) ? '"' + String(cell).replace(/"/g,'""') + '"' : String(cell)).join(',')).join('\n');
     const blob = new Blob([csv], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -211,22 +314,26 @@
   // Form submit captures Return on iOS reliably
   form.addEventListener('submit', (e)=>{
     e.preventDefault();
-    const value = input.value || '';
-    const names = value.split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
-    if(names.length){ names.forEach(addPlayer); input.value=''; }
+    const name = nameInput.value || '';
+    const num = numInput.value || '';
+    const pos = posInput.value || '';
+    if(name.trim()){
+      addPlayer(name, num, pos);
+      nameInput.value=''; numInput.value=''; posInput.value='';
+      nameInput.focus({preventScroll:true});
+    }
   });
 
-  // Toggle & Buttons
+  // Toggles & Filters
   hideMet.addEventListener('change', () => { prefs.hideMet = hideMet.checked; savePrefs(); render(); });
-  resetBtn.onclick = reset;
-  clearBtn.onclick = clearAll;
-  exportBtn.onclick = exportCSV;
+  posFilter.addEventListener('change', () => { prefs.posFilter = posFilter.value; savePrefs(); render(); });
 
   // Init
   load(); loadPrefs();
   hideMet.checked = !!prefs.hideMet;
+  if (prefs.posFilter) posFilter.value = prefs.posFilter;
   render();
-  setTimeout(()=> input.focus({preventScroll:true}), 200);
+  setTimeout(()=> nameInput.focus({preventScroll:true}), 200);
 })();
 </script>
 </body>

@@ -14,8 +14,8 @@
   header,footer{background:var(--card);padding:12px;position:sticky;z-index:10}
   header{top:0;border-bottom:1px solid var(--border)}footer{bottom:0;border-top:1px solid var(--border)}
   h1{margin:0;font-size:18px}
-  .controls{display:grid;grid-template-columns:1fr 70px 1fr auto auto auto auto auto;gap:8px;margin-top:8px;align-items:center}
-  input[type=text], input[type=number], select{padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff;width:100%}
+  .controls{display:grid;grid-template-columns:1fr auto auto auto auto auto;gap:8px;margin-top:8px;align-items:center}
+  input[type=text]{padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff;width:100%}
   input::placeholder{color:#758092}
   button{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#2a2f36;color:#fff;cursor:pointer}
   .ghost{background:transparent}
@@ -25,27 +25,26 @@
   @media (min-width: 800px){ #grid{ grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 520px) and (max-width: 799px){ #grid{ grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 519px){ #grid{ grid-template-columns: 1fr; } }
-  /* Name-only tile */
-  .tile{padding:14px;border-radius:12px;border:1px solid var(--border);background:var(--card);
+  /* Name-only tile with count badge bottom-right */
+  .tile{position:relative;padding:14px;border-radius:12px;border:1px solid var(--border);background:var(--card);
         display:flex;align-items:center;justify-content:center;min-height:56px;
         user-select:none; -webkit-user-select:none; touch-action:manipulation; cursor:pointer; transition:transform .02s ease, background .15s ease, border-color .15s ease; }
   .tile:active{ transform:scale(.98); }
   .tile .name{font-weight:800; letter-spacing:.2px; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%;}
+  .count-badge{position:absolute; right:8px; bottom:8px; padding:4px 8px; border-radius:999px; font-variant-numeric:tabular-nums;
+               background:#101317; border:1px solid var(--border); color:var(--text);}
   /* Goal met = green background; else normal */
   .tile.goal-met{ background: rgba(46,125,50,.85); border-color: rgba(46,125,50,.9); color:#fff; }
-  /* Selection overlay */
+  .tile.goal-met .count-badge{ background: rgba(0,0,0,.3); border-color: rgba(255,255,255,.25); color:#fff; }
+  /* Selection outline */
   .tile.selected{ outline: 2px solid var(--sel); box-shadow: 0 0 0 2px var(--sel) inset; }
-  /* Filters/labels */
-  .goal-badge{font-size:12px;color:var(--muted)}
+  /* Toggle */
   .toggle { display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:#14171b; }
   .toggle input { appearance:none; width:42px; height:24px; background:#333842; border-radius:999px; position:relative; outline:none; border:1px solid #2a2f36; }
   .toggle input::after { content:''; position:absolute; width:18px; height:18px; top:2px; left:2px; border-radius:999px; background:#cfd6df; transition:transform .2s ease; }
   .toggle input:checked { background:#2e7d32; }
   .toggle input:checked::after { transform:translateX(18px); }
   .toggle span { font-size:13px; color:var(--muted); }
-  /* Danger */
-  .danger { background:#8b2a2a; border-color:#7a2323; }
-  .danger:hover { filter:brightness(1.05); }
   .hint{color:var(--muted); font-size:12px; margin-top:6px;}
   .statbar{display:flex;gap:12px;justify-content:space-around;flex-wrap:wrap}
   .stat{background:var(--card);padding:6px 10px;border-radius:8px;border:1px solid var(--border)}
@@ -56,21 +55,13 @@
   <h1>Player Play Tally <span class="goal-badge">(goal: 15 plays each)</span></h1>
   <form id="addForm" class="controls" action="#" method="get" autocomplete="off" novalidate>
     <input id="nameInput" type="text" placeholder="Player name — press Return to add" inputmode="text" autocapitalize="words" />
-    <input id="numInput" type="number" placeholder="#" min="0" inputmode="numeric" />
-    <input id="posInput" type="text" placeholder="Positions (e.g., OB, RB, WR or ALL)" inputmode="text" />
-    <select id="posFilter">
-      <option value="">Filter: Any</option>
-      <option>OB</option><option>RB</option><option>WR</option><option>TE</option><option>C</option>
-      <option>OL</option><option>DL</option><option>CB</option><option>LB</option><option>S</option>
-      <option>ALL</option>
-    </select>
     <label class="toggle" title="Show only players below 15">
       <input id="hideMet" type="checkbox" />
       <span>Only below 15</span>
     </label>
     <button id="bulkAddBtn" type="button" class="primary" title="Add +1 to all selected">Add + Selected</button>
     <button id="clearSelBtn" type="button" class="ghost" title="Clear selection">Clear Sel</button>
-    <button id="resetBtn" type="button" title="Zero all counts">Reset</button>
+    <button id="resetBtn" type="button" title="Zero all counts (keep names)">Reset</button>
     <button id="clearBtn" type="button" class="danger" title="Remove all players and history">Clear All</button>
     <button id="exportBtn" type="button" title="Export CSV">Export</button>
     <button id="fakeSubmit" type="submit" style="display:none">Submit</button>
@@ -94,9 +85,6 @@
   const grid = document.getElementById('grid');
   const form = document.getElementById('addForm');
   const nameInput = document.getElementById('nameInput');
-  const numInput = document.getElementById('numInput');
-  const posInput = document.getElementById('posInput');
-  const posFilter = document.getElementById('posFilter');
   const hideMet = document.getElementById('hideMet');
   const bulkAddBtn = document.getElementById('bulkAddBtn');
   const clearSelBtn = document.getElementById('clearSelBtn');
@@ -109,10 +97,10 @@
   const lastAction = document.getElementById('lastAction');
   const needCount = document.getElementById('needCount');
 
-  // State: map by name to {count, num, pos: string[]}
+  // State: map by name to numeric count (migrate from old shapes)
   let state = { players:{}, order:[], history:[] };
-  let prefs = { hideMet: false, posFilter: "" };
-  let selection = new Set(); // selected player names
+  let prefs = { hideMet: false };
+  let selection = new Set();
   const KEY = "player_tally_v1";
   const PREFS_KEY = "player_tally_prefs_v1";
 
@@ -124,17 +112,13 @@
       if(state && state.players){
         for(const n of Object.keys(state.players)){
           const v = state.players[n];
+          // Accept legacy objects {count, ...} or plain numbers
           if (typeof v === 'number') {
-            state.players[n] = { count: v, num: '', pos: [] };
+            state.players[n] = v;
+          } else if (v && typeof v === 'object') {
+            state.players[n] = Number(v.count || 0);
           } else {
-            const obj = state.players[n];
-            obj.count = Number(obj.count||0);
-            obj.num = (obj.num ?? '') === '' ? '' : String(obj.num);
-            if (Array.isArray(obj.pos)) {
-              obj.pos = normalizePositions(obj.pos.join(','));
-            } else {
-              obj.pos = normalizePositions(String(obj.pos ?? ''));
-            }
+            state.players[n] = 0;
           }
         }
       }
@@ -145,38 +129,27 @@
 
   function renderStats(){
     playerCount.textContent = state.order.length;
-    totalPlays.textContent = state.order.reduce((a,n)=> a + (state.players[n]?.count||0), 0);
+    totalPlays.textContent = state.order.reduce((a,n)=> a + (state.players[n]||0), 0);
     selectedCount.textContent = selection.size;
     const h = state.history.at(-1);
     lastAction.textContent = h ? (h.delta>0?'+':'-') + (h.bulk?h.bulk:'1') + ' ' + (h.bulk?'players':' '+h.name) : '—';
-    const need = state.order.reduce((acc,n)=> acc + ((state.players[n]?.count||0) < GOAL ? 1 : 0), 0);
+    const need = state.order.reduce((acc,n)=> acc + ((state.players[n]||0) < GOAL ? 1 : 0), 0);
     needCount.textContent = need;
   }
 
   function normalizeName(s){ return (s||'').replace(/\s+/g,' ').trim(); }
-  function normalizePositions(raw){
-    if (!raw) return [];
-    const arr = String(raw).split(/[,\u{2044}\/;]+/u).map(s=>s.trim()).filter(Boolean);
-    const dedup = [];
-    const seen = new Set();
-    for (let p of arr) {
-      const up = p.toUpperCase();
-      if (!seen.has(up)) { seen.add(up); dedup.push(up); }
-    }
-    return dedup.slice(0, 8);
-  }
 
-  function createTile(name, data){
-    const count = data.count||0;
-    const met = count >= GOAL;
+  function createTile(name, count){
+    const met = (count||0) >= GOAL;
     const d = document.createElement('div');
     d.className = 'tile ' + (met ? 'goal-met' : 'goal-miss');
     if (selection.has(name)) d.classList.add('selected');
     const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = name;
-    d.append(nm);
+    const badge = document.createElement('div'); badge.className = 'count-badge'; badge.textContent = String(count||0);
+    d.append(nm, badge);
     d.addEventListener('click', () => {
       if (selection.has(name)) selection.delete(name); else selection.add(name);
-      render(); // re-render just to update selected states (simple)
+      render(); // update selection visuals
     });
     return d;
   }
@@ -184,59 +157,26 @@
   function render(){
     grid.innerHTML = '';
     state.order.forEach(n=> {
-      const data = state.players[n] || {count:0,num:'',pos:[]};
-      if (prefs.hideMet && (data.count||0) >= GOAL) return;
-      if (prefs.posFilter) {
-        const posArr = data.pos || [];
-        const hasAll = posArr.includes('ALL');
-        const match = hasAll || posArr.includes(prefs.posFilter);
-        if (!match) return;
-      }
-      grid.appendChild(createTile(n, data));
+      const c = state.players[n] || 0;
+      if (prefs.hideMet && c >= GOAL) return;
+      grid.appendChild(createTile(n, c));
     });
     renderStats();
   }
 
-  function change(name, delta){
-    if(!state.players[name]) return;
-    const current = state.players[name].count || 0;
-    const next = Math.max(0, current + delta);
-    const applied = next - current;
-    if(!applied) return;
-    state.players[name].count = next;
-    state.history.push({name, delta: applied});
-    if(state.history.length > 500) state.history.shift();
-  }
-
-  function bulkAdd(){
-    if (selection.size === 0) return;
-    let appliedCount = 0;
-    selection.forEach(n => {
-      if(state.players[n]){
-        const before = state.players[n].count||0;
-        state.players[n].count = Math.max(0, before + 1);
-        appliedCount += 1;
-      }
-    });
-    state.history.push({ name: 'bulk', delta: +1, bulk: appliedCount });
-    if(state.history.length > 500) state.history.shift();
-    save(); render();
-  }
-
-  function addPlayer(name, num, posRaw){
+  function addPlayer(name){
     name = normalizeName(name);
     if(!name) return;
     const exists = state.order.some(n=> n.toLowerCase() === name.toLowerCase());
     if(exists) return;
-    const positions = normalizePositions(posRaw);
-    state.players[name] = { count: 0, num: (num??'') === '' ? '' : String(num), pos: positions };
+    state.players[name] = 0;
     state.order.push(name);
     save(); render();
   }
 
   function reset(){
     if(confirm('Zero all counts (keep names)?')){
-      state.order.forEach(n=> { if(state.players[n]) state.players[n].count = 0; });
+      state.order.forEach(n=> { state.players[n] = 0; });
       state.history = [];
       save(); render();
     }
@@ -250,20 +190,30 @@
     save(); render();
   }
 
+  function bulkAdd(){
+    if (selection.size === 0) return;
+    let appliedCount = 0;
+    selection.forEach(n => {
+      if(state.players[n] != null){
+        state.players[n] = Math.max(0, (state.players[n]||0) + 1);
+        appliedCount += 1;
+      }
+    });
+    state.history.push({ name: 'bulk', delta: +1, bulk: appliedCount });
+    if(state.history.length > 500) state.history.shift();
+    save(); render();
+  }
+
   function clearSelection(){
     selection.clear();
-    renderStats();
-    // only update outlines without full re-render
-    document.querySelectorAll('.tile.selected').forEach(el=> el.classList.remove('selected'));
-    selectedCount.textContent = 0;
+    render(); // update tiles
   }
 
   function exportCSV(){
-    const rows = [['Name','Number','Positions','Plays','RemainingTo15','MetGoal']];
+    const rows = [['Name','Plays','RemainingTo15','MetGoal']];
     state.order.forEach(n=>{
-      const d = state.players[n] || {count:0,num:'',pos:[]};
-      const c = d.count || 0;
-      rows.push([n, d.num ?? '', (d.pos||[]).join('; '), String(c), String(Math.max(0, 15 - c)), c>=15 ? 'Yes':'No']);
+      const c = state.players[n] || 0;
+      rows.push([n, String(c), String(Math.max(0, 15 - c)), c>=15 ? 'Yes':'No']);
     });
     const csv = rows.map(r => r.map(cell => /[",\n]/.test(cell) ? '"' + String(cell).replace(/"/g,'""') + '"' : String(cell)).join(',')).join('\n');
     const blob = new Blob([csv], {type:'text/csv'});
@@ -278,18 +228,15 @@
   form.addEventListener('submit', (e)=>{
     e.preventDefault();
     const name = nameInput.value || '';
-    const num = numInput.value || '';
-    const pos = posInput.value || '';
     if(name.trim()){
-      addPlayer(name, num, pos);
-      nameInput.value=''; numInput.value=''; posInput.value='';
+      addPlayer(name);
+      nameInput.value='';
       nameInput.focus({preventScroll:true});
     }
   });
 
   // Toggles & Buttons
   hideMet.addEventListener('change', () => { prefs.hideMet = hideMet.checked; savePrefs(); render(); });
-  posFilter.addEventListener('change', () => { prefs.posFilter = posFilter.value; savePrefs(); render(); });
   bulkAddBtn.addEventListener('click', bulkAdd);
   clearSelBtn.addEventListener('click', clearSelection);
   resetBtn.onclick = reset;
@@ -299,7 +246,6 @@
   // Init
   load(); loadPrefs();
   hideMet.checked = !!prefs.hideMet;
-  if (prefs.posFilter) posFilter.value = prefs.posFilter;
   render();
   setTimeout(()=> nameInput.focus({preventScroll:true}), 200);
 })();

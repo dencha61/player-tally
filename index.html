@@ -14,31 +14,26 @@
   header,footer{background:var(--card);padding:12px;position:sticky;z-index:10}
   header{top:0;border-bottom:1px solid var(--border)}footer{bottom:0;border-top:1px solid var(--border)}
   h1{margin:0;font-size:18px}
-  .controls{display:grid;grid-template-columns:1fr auto auto auto auto auto;gap:8px;margin-top:8px;align-items:center}
-  input[type=text]{padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff;width:100%}
+  .controls{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto;gap:8px;margin-top:8px;align-items:center}
+  input[type=text], select{padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff;width:100%}
   input::placeholder{color:#758092}
   button{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#2a2f36;color:#fff;cursor:pointer}
   .ghost{background:transparent}
   .primary{background:var(--ok); border-color:#246a29; color:#fff; font-weight:700;}
   #grid{display:grid;gap:10px;padding:12px}
-  /* 3 columns max; responsive down to 2 and 1 */
   @media (min-width: 800px){ #grid{ grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 520px) and (max-width: 799px){ #grid{ grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 519px){ #grid{ grid-template-columns: 1fr; } }
-  /* Name-only tile with count badge bottom-right */
   .tile{position:relative;padding:14px;border-radius:12px;border:1px solid var(--border);background:var(--card);
         display:flex;align-items:center;justify-content:center;min-height:56px;
-        user-select:none; -webkit-user-select:none; touch-action:manipulation; cursor:pointer; transition:transform .02s ease, background .15s ease, border-color .15s ease; }
+        user-select:none; cursor:pointer; transition:transform .02s ease, background .15s ease, border-color .15s ease; }
   .tile:active{ transform:scale(.98); }
-  .tile .name{font-weight:800; letter-spacing:.2px; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%;}
+  .tile .name{font-weight:800;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;}
   .count-badge{position:absolute; right:8px; bottom:8px; padding:4px 8px; border-radius:999px; font-variant-numeric:tabular-nums;
                background:#101317; border:1px solid var(--border); color:var(--text);}
-  /* Goal met = green background; else normal */
   .tile.goal-met{ background: rgba(46,125,50,.85); border-color: rgba(46,125,50,.9); color:#fff; }
   .tile.goal-met .count-badge{ background: rgba(0,0,0,.3); border-color: rgba(255,255,255,.25); color:#fff; }
-  /* Selection outline */
   .tile.selected{ outline: 2px solid var(--sel); box-shadow: 0 0 0 2px var(--sel) inset; }
-  /* Toggle */
   .toggle { display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:#14171b; }
   .toggle input { appearance:none; width:42px; height:24px; background:#333842; border-radius:999px; position:relative; outline:none; border:1px solid #2a2f36; }
   .toggle input::after { content:''; position:absolute; width:18px; height:18px; top:2px; left:2px; border-radius:999px; background:#cfd6df; transition:transform .2s ease; }
@@ -54,19 +49,24 @@
 <header>
   <h1>Player Play Tally <span class="goal-badge">(goal: 15 plays each)</span></h1>
   <form id="addForm" class="controls" action="#" method="get" autocomplete="off" novalidate>
-    <input id="nameInput" type="text" placeholder="Player name — press Return to add" inputmode="text" autocapitalize="words" />
-    <label class="toggle" title="Show only players below 15">
-      <input id="hideMet" type="checkbox" />
-      <span>Only below 15</span>
-    </label>
-    <button id="bulkAddBtn" type="button" class="primary" title="Add +1 to all selected">Add + Selected</button>
-    <button id="clearSelBtn" type="button" class="ghost" title="Clear selection">Clear Sel</button>
-    <button id="resetBtn" type="button" title="Zero all counts (keep names)">Reset</button>
-    <button id="clearBtn" type="button" class="danger" title="Remove all players and history">Clear All</button>
-    <button id="exportBtn" type="button" title="Export CSV">Export</button>
+    <input id="nameInput" type="text" placeholder="Player name — press Return to add" />
+    <label class="toggle"><input id="hideMet" type="checkbox"/><span>Only below 15</span></label>
+    <select id="sortSelect">
+      <option value="nameAsc">Sort: Name A–Z</option>
+      <option value="nameDesc">Sort: Name Z–A</option>
+      <option value="countDesc">Sort: Plays High→Low</option>
+      <option value="countAsc">Sort: Plays Low→High</option>
+    </select>
+    <button id="bulkAddBtn" type="button" class="primary">Add + Selected</button>
+    <button id="clearSelBtn" type="button" class="ghost">Clear Sel</button>
+    <button id="saveBtn" type="button">Save Roster</button>
+    <button id="restoreBtn" type="button">Restore</button>
+    <button id="resetBtn" type="button">Reset</button>
+    <button id="clearBtn" type="button" class="danger">Clear All</button>
+    <button id="exportBtn" type="button">Export</button>
     <button id="fakeSubmit" type="submit" style="display:none">Submit</button>
   </form>
-  <div class="hint">Tip: tap tiles to select multiple players, then use <b>Add + Selected</b>.</div>
+  <div class="hint">Tip: tap tiles to select multiple players, then use <b>Add + Selected</b>. Save your roster to bring it back after a Clear.</div>
 </header>
 <main id="grid"></main>
 <footer>
@@ -78,16 +78,17 @@
     <div class="stat">Last: <span id="lastAction">—</span></div>
   </div>
 </footer>
-
 <script>
 (function(){
   const GOAL = 15;
   const grid = document.getElementById('grid');
-  const form = document.getElementById('addForm');
   const nameInput = document.getElementById('nameInput');
   const hideMet = document.getElementById('hideMet');
+  const sortSelect = document.getElementById('sortSelect');
   const bulkAddBtn = document.getElementById('bulkAddBtn');
   const clearSelBtn = document.getElementById('clearSelBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const restoreBtn = document.getElementById('restoreBtn');
   const resetBtn = document.getElementById('resetBtn');
   const clearBtn = document.getElementById('clearBtn');
   const exportBtn = document.getElementById('exportBtn');
@@ -97,32 +98,17 @@
   const lastAction = document.getElementById('lastAction');
   const needCount = document.getElementById('needCount');
 
-  // State: map by name to numeric count (migrate from old shapes)
   let state = { players:{}, order:[], history:[] };
-  let prefs = { hideMet: false };
+  let prefs = { hideMet: false, sort: 'nameAsc' };
   let selection = new Set();
   const KEY = "player_tally_v1";
   const PREFS_KEY = "player_tally_prefs_v1";
+  const SAVED_KEY = "player_tally_saved_roster_v1";
 
   function save(){ localStorage.setItem(KEY, JSON.stringify(state)); renderStats(); }
   function load(){
     const raw = localStorage.getItem(KEY);
-    if(raw){
-      try{ state = JSON.parse(raw); }catch(e){}
-      if(state && state.players){
-        for(const n of Object.keys(state.players)){
-          const v = state.players[n];
-          // Accept legacy objects {count, ...} or plain numbers
-          if (typeof v === 'number') {
-            state.players[n] = v;
-          } else if (v && typeof v === 'object') {
-            state.players[n] = Number(v.count || 0);
-          } else {
-            state.players[n] = 0;
-          }
-        }
-      }
-    }
+    if(raw){ try{ state = JSON.parse(raw); }catch(e){} }
   }
   function savePrefs(){ localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
   function loadPrefs(){ const raw = localStorage.getItem(PREFS_KEY); if(raw){ try{ prefs = JSON.parse(raw); }catch(e){} } }
@@ -136,119 +122,70 @@
     const need = state.order.reduce((acc,n)=> acc + ((state.players[n]||0) < GOAL ? 1 : 0), 0);
     needCount.textContent = need;
   }
-
   function normalizeName(s){ return (s||'').replace(/\s+/g,' ').trim(); }
-
   function createTile(name, count){
     const met = (count||0) >= GOAL;
     const d = document.createElement('div');
     d.className = 'tile ' + (met ? 'goal-met' : 'goal-miss');
     if (selection.has(name)) d.classList.add('selected');
-    const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = name;
-    const badge = document.createElement('div'); badge.className = 'count-badge'; badge.textContent = String(count||0);
-    d.append(nm, badge);
-    d.addEventListener('click', () => {
-      if (selection.has(name)) selection.delete(name); else selection.add(name);
-      render(); // update selection visuals
-    });
+    d.innerHTML = `<div class="name">${name}</div><div class="count-badge">${count||0}</div>`;
+    d.addEventListener('click', () => { if (selection.has(name)) selection.delete(name); else selection.add(name); render(); });
     return d;
   }
-
+  function sortedOrder(){
+    const list = [...state.order];
+    switch(prefs.sort){
+      case 'nameAsc': list.sort((a,b)=> a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'})); break;
+      case 'nameDesc': list.sort((a,b)=> b.localeCompare(a, undefined, {numeric:true, sensitivity:'base'})); break;
+      case 'countAsc': list.sort((a,b)=> (state.players[a]||0) - (state.players[b]||0)); break;
+      case 'countDesc': list.sort((a,b)=> (state.players[b]||0) - (state.players[a]||0)); break;
+    }
+    return list;
+  }
   function render(){
     grid.innerHTML = '';
-    state.order.forEach(n=> {
-      const c = state.players[n] || 0;
+    sortedOrder().forEach(n=> {
+      const c = state.players[n]||0;
       if (prefs.hideMet && c >= GOAL) return;
-      grid.appendChild(createTile(n, c));
+      grid.appendChild(createTile(n,c));
     });
     renderStats();
   }
-
   function addPlayer(name){
     name = normalizeName(name);
     if(!name) return;
-    const exists = state.order.some(n=> n.toLowerCase() === name.toLowerCase());
-    if(exists) return;
+    if(state.order.includes(name)) return;
     state.players[name] = 0;
     state.order.push(name);
     save(); render();
   }
-
-  function reset(){
-    if(confirm('Zero all counts (keep names)?')){
-      state.order.forEach(n=> { state.players[n] = 0; });
-      state.history = [];
-      save(); render();
-    }
-  }
-
-  function clearAll(){
-    if(!confirm('Remove ALL players and history? This cannot be undone.')) return;
-    state = { players:{}, order:[], history:[] };
-    selection.clear();
-    localStorage.removeItem(KEY);
-    save(); render();
-  }
-
+  function reset(){ if(confirm('Zero all counts?')){ state.order.forEach(n=> state.players[n]=0); state.history=[]; save(); render(); } }
+  function clearAll(){ if(confirm('Remove ALL players?')){ state = {players:{},order:[],history:[]}; selection.clear(); localStorage.removeItem(KEY); save(); render(); } }
   function bulkAdd(){
-    if (selection.size === 0) return;
-    let appliedCount = 0;
-    selection.forEach(n => {
-      if(state.players[n] != null){
-        state.players[n] = Math.max(0, (state.players[n]||0) + 1);
-        appliedCount += 1;
-      }
-    });
-    state.history.push({ name: 'bulk', delta: +1, bulk: appliedCount });
-    if(state.history.length > 500) state.history.shift();
+    if(selection.size===0) return;
+    selection.forEach(n=> state.players[n]=(state.players[n]||0)+1);
+    state.history.push({name:'bulk',delta:+1,bulk:selection.size});
     save(); render();
   }
-
-  function clearSelection(){
-    selection.clear();
-    render(); // update tiles
-  }
-
+  function clearSelection(){ selection.clear(); render(); }
   function exportCSV(){
-    const rows = [['Name','Plays','RemainingTo15','MetGoal']];
-    state.order.forEach(n=>{
-      const c = state.players[n] || 0;
-      rows.push([n, String(c), String(Math.max(0, 15 - c)), c>=15 ? 'Yes':'No']);
-    });
-    const csv = rows.map(r => r.map(cell => /[",\n]/.test(cell) ? '"' + String(cell).replace(/"/g,'""') + '"' : String(cell)).join(',')).join('\n');
-    const blob = new Blob([csv], {type:'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'player_tally.csv';
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    const rows=[['Name','Plays','RemainingTo15','MetGoal']];
+    state.order.forEach(n=>{ const c=state.players[n]||0; rows.push([n,c,Math.max(0,15-c),c>=15?'Yes':'No']); });
+    const csv=rows.map(r=>r.join(',')).join('\\n');
+    const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='player_tally.csv'; a.click(); URL.revokeObjectURL(url);
   }
-
-  // Form submit captures Return on iOS reliably
-  form.addEventListener('submit', (e)=>{
-    e.preventDefault();
-    const name = nameInput.value || '';
-    if(name.trim()){
-      addPlayer(name);
-      nameInput.value='';
-      nameInput.focus({preventScroll:true});
-    }
-  });
-
-  // Toggles & Buttons
-  hideMet.addEventListener('change', () => { prefs.hideMet = hideMet.checked; savePrefs(); render(); });
-  bulkAddBtn.addEventListener('click', bulkAdd);
-  clearSelBtn.addEventListener('click', clearSelection);
-  resetBtn.onclick = reset;
-  clearBtn.onclick = clearAll;
-  exportBtn.onclick = exportCSV;
-
-  // Init
-  load(); loadPrefs();
-  hideMet.checked = !!prefs.hideMet;
-  render();
-  setTimeout(()=> nameInput.focus({preventScroll:true}), 200);
-})();
-</script>
-</body>
-</html>
+  function saveRoster(){ localStorage.setItem(SAVED_KEY, JSON.stringify(state.order)); alert('Roster saved.'); }
+  function restoreRoster(){
+    const raw=localStorage.getItem(SAVED_KEY); if(!raw){ alert('No saved roster'); return; }
+    let roster=JSON.parse(raw)||[]; roster.forEach(name=>{ if(!state.order.includes(name)){ state.order.push(name); state.players[name]=0; }});
+    save(); render();
+  }
+  document.getElementById('addForm').addEventListener('submit',e=>{ e.preventDefault(); addPlayer(nameInput.value); nameInput.value=''; });
+  hideMet.addEventListener('change',()=>{ prefs.hideMet=hideMet.checked; savePrefs(); render(); });
+  sortSelect.addEventListener('change',()=>{ prefs.sort=sortSelect.value; savePrefs(); render(); });
+  bulkAddBtn.onclick=bulkAdd; clearSelBtn.onclick=clearSelection; saveBtn.onclick=saveRoster; restoreBtn.onclick=restoreRoster;
+  resetBtn.onclick=reset; clearBtn.onclick=clearAll; exportBtn.onclick=exportCSV;
+  load(); loadPrefs(); hideMet.checked=prefs.hideMet; sortSelect.value=prefs.sort; render();
+})();</script>
+</body></html>

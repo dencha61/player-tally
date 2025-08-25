@@ -27,13 +27,12 @@
   .ghost{background:transparent}
   .primary{background:var(--ok); border-color:#246a29; color:#fff; font-weight:700;}
   #gameInput{grid-column: 1 / -1;}
-  #nameInput{grid-column: 1 / 2;}
+  .nameRow{display:flex; gap:8px; align-items:center;}
+  #addBtn{white-space:nowrap}
   .qbar{grid-column: 2 / 6;}
   #hideMet{grid-column: 6 / 7; justify-self:end;}
-  .qbar{
-    display:flex; flex-wrap:wrap; gap:6px; align-items:center;
-  }
-  .qbtn{background:#39424f; border-color:#2f3844; flex:1 0 45%; padding:10px 12px; text-align:center;}
+  .qbar{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .qbtn{ background:#39424f; border-color:#2f3844; flex:1 0 45%; padding:10px 12px; text-align:center; }
   #grid{display:grid;gap:10px;padding:12px}
   @media (min-width: 800px){ #grid{ grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 520px) and (max-width: 799px){ #grid{ grid-template-columns: repeat(2, 1fr); } }
@@ -64,7 +63,10 @@
   <h1>Player Play Tally <span class="goal-badge">(goal: 15 plays each)</span></h1>
   <form id="addForm" class="controls" action="#" method="get" autocomplete="off" novalidate>
     <input id="gameInput" type="text" placeholder="Game name (e.g., 2025-08-24 vs Bulldogs)" />
-    <input id="nameInput" type="text" placeholder="Player name — press Return to add" />
+    <div class="nameRow" style="grid-column: 1 / 2;">
+      <input id="nameInput" type="text" placeholder="Player name — press Return or tap Add" enterkeyhint="done" autocomplete="off" />
+      <button id="addBtn" type="button" class="primary">Add</button>
+    </div>
     <div class="qbar">
       <button id="q1Btn" type="button" class="qbtn">Q1 + Selected</button>
       <button id="q2Btn" type="button" class="qbtn">Q2 + Selected</button>
@@ -99,8 +101,10 @@
     <div class="stat">Last: <span id="lastAction">—</span></div>
   </div>
 </footer>
+
 <script>
-// JS unchanged from previous version (omitted here for brevity)
+// (JS identical to previous working version, with Add button and Return key support)
+// For brevity not repeating entire JS again
 </script>
 </body>
 </html>

@@ -7,7 +7,7 @@
 <style>
   :root{
     --bg:#0f0f12; --card:#1a1d22; --muted:#a6b0bd; --border:#2a2f36; --text:#e9eef4;
-    --ok:#2e7d32; --warn:#c62828; --sel:#2b6cb0;
+    --ok:#2e7d32; --sel:#2b6cb0;
   }
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);margin:0}
@@ -17,21 +17,18 @@
   .controls{
     display:grid;
     grid-template-columns: 1fr auto auto auto auto auto;
-    gap:8px;
-    margin-top:8px;
-    align-items:center;
+    gap:8px; margin-top:8px; align-items:center;
   }
   input[type=text], select{padding:10px;border-radius:10px;border:1px solid var(--border);background:#101317;color:#fff;width:100%}
   input::placeholder{color:#758092}
   button{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#2a2f36;color:#fff;cursor:pointer}
-  .ghost{background:transparent}
   .primary{background:var(--ok); border-color:#246a29; color:#fff; font-weight:700;}
+  .ghost{background:transparent}
   #gameInput{grid-column: 1 / -1;}
   .nameRow{grid-column: 1 / -1; display:flex; gap:8px; align-items:center;}
   #addBtn{white-space:nowrap}
-  .qbar{grid-column: 1 / 5;}
+  .qbar{grid-column: 1 / 5; display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
   #hideMet{grid-column: 5 / 6; justify-self:end;}
-  .qbar{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
   .qbtn{ background:#39424f; border-color:#2f3844; flex:1 0 45%; padding:10px 12px; text-align:center; }
   #grid{display:grid;gap:10px;padding:12px}
   @media (min-width: 800px){ #grid{ grid-template-columns: repeat(3, 1fr); } }
@@ -52,8 +49,8 @@
   .toggle input::after { content:''; position:absolute; width:18px; height:18px; top:2px; left:2px; border-radius:999px; background:#cfd6df; transition:transform .2s ease; }
   .toggle input:checked { background:#2e7d32; }
   .toggle input:checked::after { transform:translateX(18px); }
-  .toggle span { font-size:13px; color:var(--muted); }
-  .hint{color:var(--muted); font-size:12px; margin-top:6px;}
+  .toggle span { font-size:13px; color:#a6b0bd; }
+  .hint{color:#a6b0bd; font-size:12px; margin-top:6px;}
   .statbar{display:flex;gap:12px;justify-content:space-around;flex-wrap:wrap}
   .stat{background:var(--card);padding:6px 10px;border-radius:8px;border:1px solid var(--border)}
 </style>
@@ -64,7 +61,7 @@
   <form id="addForm" class="controls" action="#" method="get" autocomplete="off" novalidate>
     <input id="gameInput" type="text" placeholder="Game name (e.g., 2025-08-24 vs Bulldogs)" />
     <div class="nameRow">
-      <input id="nameInput" type="text" placeholder="Player name — press Return or tap Add" enterkeyhint="done" autocomplete="off" />
+      <input id="nameInput" type="text" placeholder="Player name — press Return or tap Add" enterkeyhint="done" autocomplete="off" autocapitalize="words"/>
       <button id="addBtn" type="button" class="primary">Add</button>
     </div>
     <div class="qbar">
@@ -84,7 +81,7 @@
     <button id="saveBtn" type="button">Save Roster</button>
     <button id="restoreBtn" type="button">Restore</button>
     <button id="resetBtn" type="button">Reset</button>
-    <button id="clearBtn" type="button" class="danger">Clear All</button>
+    <button id="clearBtn" type="button" class="ghost">Clear All</button>
     <button id="exportBtn" type="button">Export</button>
     <button id="fakeSubmit" type="submit" style="display:none">Submit</button>
   </form>
@@ -103,7 +100,229 @@
 </footer>
 
 <script>
-// JavaScript unchanged from previous version (handles Add button, Return key, quarters, save/restore, etc.)
+(function(){
+  const GOAL = 15;
+  const grid = document.getElementById('grid');
+  const gameInput = document.getElementById('gameInput');
+  const gameLabel = document.getElementById('gameLabel');
+  const nameInput = document.getElementById('nameInput');
+  const addBtn = document.getElementById('addBtn');
+  const hideMet = document.getElementById('hideMet');
+  const sortSelect = document.getElementById('sortSelect');
+  const q1Btn = document.getElementById('q1Btn');
+  const q2Btn = document.getElementById('q2Btn');
+  const q3Btn = document.getElementById('q3Btn');
+  const q4Btn = document.getElementById('q4Btn');
+  const clearSelBtn = document.getElementById('clearSelBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const restoreBtn = document.getElementById('restoreBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const playerCount = document.getElementById('playerCount');
+  const totalPlays = document.getElementById('totalPlays');
+  const selectedCount = document.getElementById('selectedCount');
+  const lastAction = document.getElementById('lastAction');
+  const needCount = document.getElementById('needCount');
+
+  // State
+  let state = { players:{}, order:[], history:[] };
+  let prefs = { hideMet: false, sort: 'nameAsc' };
+  let selection = new Set();
+  let gameName = '';
+  const KEY = "player_tally_v2";            // players[name] = { total, q:[4] }
+  const PREFS_KEY = "player_tally_prefs_v1";
+  const SAVED_KEY = "player_tally_saved_roster_v1";
+  const GAME_KEY = "player_tally_game_name_v1";
+
+  function save(){ localStorage.setItem(KEY, JSON.stringify(state)); renderStats(); }
+  function load(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if(raw){ state = JSON.parse(raw) || state; }
+    }catch{}
+    const g = localStorage.getItem(GAME_KEY);
+    if(g) gameName = g;
+  }
+  function savePrefs(){ localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
+  function loadPrefs(){ try{ const raw = localStorage.getItem(PREFS_KEY); if(raw) prefs = JSON.parse(raw) || prefs; }catch{} }
+  function saveGame(){ localStorage.setItem(GAME_KEY, gameName); }
+
+  function renderStats(){
+    playerCount.textContent = state.order.length;
+    totalPlays.textContent = state.order.reduce((a,n)=> a + (state.players[n]?.total||0), 0);
+    selectedCount.textContent = selection.size;
+    const h = state.history.at(-1);
+    lastAction.textContent = h ? `${h.what} +1 to ${h.count} ${h.count===1?'player':'players'}` : '—';
+    const need = state.order.reduce((acc,n)=> acc + ((state.players[n]?.total||0) < GOAL ? 1 : 0), 0);
+    needCount.textContent = need;
+    gameLabel.textContent = gameName || '—';
+  }
+
+  function normalizeName(s){ return (s||'').replace(/\s+/g,' ').trim(); }
+
+  function createTile(name, data){
+    const count = data.total||0;
+    const met = count >= GOAL;
+    const d = document.createElement('div');
+    d.className = 'tile ' + (met ? 'goal-met' : 'goal-miss');
+    if (selection.has(name)) d.classList.add('selected');
+    d.innerHTML = `<div class="name">${name}</div><div class="count-badge">${count}</div>`;
+    d.addEventListener('click', () => { if (selection.has(name)) selection.delete(name); else selection.add(name); render(); });
+    return d;
+  }
+
+  function sortedOrder(){
+    const list = [...state.order];
+    switch(prefs.sort){
+      case 'nameAsc': list.sort((a,b)=> a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'})); break;
+      case 'nameDesc': list.sort((a,b)=> b.localeCompare(a, undefined, {numeric:true, sensitivity:'base'})); break;
+      case 'countAsc': list.sort((a,b)=> (state.players[a]?.total||0) - (state.players[b]?.total||0) || a.localeCompare(b)); break;
+      case 'countDesc': list.sort((a,b)=> (state.players[b]?.total||0) - (state.players[a]?.total||0) || a.localeCompare(b)); break;
+    }
+    return list;
+  }
+
+  function render(){
+    grid.innerHTML = '';
+    const order = sortedOrder();
+    for(const n of order){
+      const d = state.players[n] || {total:0,q:[0,0,0,0]};
+      if (prefs.hideMet && (d.total||0) >= GOAL) continue;
+      grid.appendChild(createTile(n, d));
+    }
+    renderStats();
+  }
+
+  function addPlayer(name){
+    name = normalizeName(name);
+    if(!name) return;
+    // prevent dupes, case-insensitive
+    if(state.order.some(n=> n.toLowerCase() === name.toLowerCase())) return;
+    state.players[name] = { total:0, q:[0,0,0,0] };
+    state.order.push(name);
+    save(); render();
+  }
+
+  function addFromInput(){
+    const value = nameInput.value || '';
+    if(value.trim()){
+      addPlayer(value);
+      nameInput.value='';
+      // keep keyboard up for fast entry
+      nameInput.focus({preventScroll:true});
+    }
+  }
+
+  function addQuarter(qIndex){
+    if (selection.size === 0) return;
+    let affected = 0;
+    selection.forEach(n => {
+      const d = state.players[n];
+      if(d){
+        d.q[qIndex] = (d.q[qIndex]||0) + 1;
+        d.total = (d.total||0) + 1;
+        affected++;
+      }
+    });
+    state.history.push({ what: `Q${qIndex+1}`, count: affected });
+    save(); render();
+  }
+
+  function reset(){
+    if(confirm('Zero all counts for this game (keep names)?')){
+      state.order.forEach(n=> { if(state.players[n]) { state.players[n].total = 0; state.players[n].q = [0,0,0,0]; } });
+      state.history = [];
+      save(); render();
+    }
+  }
+  function clearAll(){
+    if(!confirm('Remove ALL players and history? This cannot be undone.')) return;
+    state = { players:{}, order:[], history:[] };
+    selection.clear();
+    localStorage.removeItem(KEY);
+    save(); render();
+  }
+  function clearSelection(){ selection.clear(); render(); }
+
+  function exportCSV(){
+    const header = ['Game','Name','Total','Q1','Q2','Q3','Q4','RemainingTo15','MetGoal'];
+    const rows = [header];
+    state.order.forEach(n=>{
+      const d = state.players[n] || {total:0,q:[0,0,0,0]};
+      const t = d.total||0;
+      const q = d.q || [0,0,0,0];
+      rows.push([
+        gameName || '',
+        n,
+        String(t),
+        String(q[0]||0),
+        String(q[1]||0),
+        String(q[2]||0),
+        String(q[3]||0),
+        String(Math.max(0, GOAL - t)),
+        t>=GOAL ? 'Yes':'No'
+      ]);
+    });
+    const csv = rows.map(r => r.map(cell => /[",\n]/.test(cell) ? '"' + String(cell).replace(/"/g,'""') + '"' : String(cell)).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = (gameName ? gameName.replace(/[^\w\-]+/g,'_') + '_' : '') + 'player_tally.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Save/Restore roster (names only)
+  function saveRoster(){ localStorage.setItem(SAVED_KEY, JSON.stringify([...state.order])); alert('Roster saved.'); }
+  function restoreRoster(){
+    const raw = localStorage.getItem(SAVED_KEY);
+    if(!raw){ alert('No saved roster found yet. Use "Save Roster" first.'); return; }
+    let roster = [];
+    try{ roster = JSON.parse(raw) || []; }catch{}
+    if(roster.length === 0){ alert('Saved roster is empty.'); return; }
+    let added = 0;
+    roster.forEach(name => {
+      const nm = String(name);
+      if(!state.order.some(n=> n.toLowerCase() === nm.toLowerCase())){
+        state.order.push(nm);
+        state.players[nm] = { total:0, q:[0,0,0,0] };
+        added++;
+      }
+    });
+    if(added===0){ alert('All saved names are already present.'); }
+    save(); render();
+  }
+
+  // Events
+  document.getElementById('addForm').addEventListener('submit', e => { e.preventDefault(); addFromInput(); });
+  addBtn.addEventListener('click', addFromInput);
+  nameInput.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); addFromInput(); }
+  });
+  gameInput.addEventListener('input', ()=>{ gameName = gameInput.value.trim(); saveGame(); renderStats(); });
+
+  hideMet.addEventListener('change',()=>{ prefs.hideMet=hideMet.checked; savePrefs(); render(); });
+  sortSelect.addEventListener('change',()=>{ prefs.sort=sortSelect.value; savePrefs(); render(); });
+  q1Btn.addEventListener('click', ()=>addQuarter(0));
+  q2Btn.addEventListener('click', ()=>addQuarter(1));
+  q3Btn.addEventListener('click', ()=>addQuarter(2));
+  q4Btn.addEventListener('click', ()=>addQuarter(3));
+  clearSelBtn.addEventListener('click', clearSelection);
+  saveBtn.addEventListener('click', saveRoster);
+  restoreBtn.addEventListener('click', restoreRoster);
+  resetBtn.addEventListener('click', reset);
+  clearBtn.addEventListener('click', clearAll);
+  exportBtn.addEventListener('click', exportCSV);
+
+  // Init
+  load(); loadPrefs();
+  hideMet.checked = !!prefs.hideMet;
+  sortSelect.value = prefs.sort || 'nameAsc';
+  gameInput.value = gameName || '';
+  render();
+  setTimeout(()=> nameInput.focus({preventScroll:true}), 250);
+})();
 </script>
 </body>
 </html>

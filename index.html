@@ -87,7 +87,7 @@
     <button id="exportBtn" type="button">Export</button>
     <button id="fakeSubmit" type="submit" style="display:none">Submit</button>
   </form>
-  <div class="hint">Tip: select tiles, then tap a quarter to add or **Undo − Selected** to remove a play. Preloaded with your roster.</div>
+  <div class="hint">Tip: select one or more tiles, then tap a quarter to add or **Undo − Selected** to remove a play from each selected player.</div>
 </header>
 <main id="grid"></main>
 <footer>
@@ -104,13 +104,253 @@
 <script>
 (function(){
   const GOAL = 15;
-  const DEFAULT_ROSTER = [
-    "2 Deshaun","12 Wesley","20 Preston","21 Dezmond","22 Lucah",
-    "25 Alejandro","28 James","29 Jose","30 Mason","32 Liam",
-    "33 Andres","47 Killian","53 Michael","55 Remmy"
-  ];
-  // ... (rest of script unchanged from previous version)
-})(); 
+  const grid = document.getElementById('grid');
+  const gameInput = document.getElementById('gameInput');
+  const gameLabel = document.getElementById('gameLabel');
+  const nameInput = document.getElementById('nameInput');
+  const addBtn = document.getElementById('addBtn');
+  const hideMet = document.getElementById('hideMet');
+  const sortSelect = document.getElementById('sortSelect');
+  const q1Btn = document.getElementById('q1Btn');
+  const q2Btn = document.getElementById('q2Btn');
+  const q3Btn = document.getElementById('q3Btn');
+  const q4Btn = document.getElementById('q4Btn');
+  const undoBtn = document.getElementById('undoBtn');
+  const clearSelBtn = document.getElementById('clearSelBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const restoreBtn = document.getElementById('restoreBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const playerCount = document.getElementById('playerCount');
+  const totalPlays = document.getElementById('totalPlays');
+  const selectedCount = document.getElementById('selectedCount');
+  const lastAction = document.getElementById('lastAction');
+  const needCount = document.getElementById('needCount');
+
+  // State
+  let state = { players:{}, order:[], history:[] };
+  let prefs = { hideMet: false, sort: 'nameAsc' };
+  let selection = new Set();
+  let gameName = '';
+  const KEY = "player_tally_v2";            // players[name] = { total, q:[4] }
+  const PREFS_KEY = "player_tally_prefs_v1";
+  const SAVED_KEY = "player_tally_saved_roster_v1";
+  const GAME_KEY = "player_tally_game_name_v1";
+
+  function save(){ localStorage.setItem(KEY, JSON.stringify(state)); renderStats(); }
+  function load(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if(raw){ state = JSON.parse(raw) || state; }
+    }catch{}
+    const g = localStorage.getItem(GAME_KEY);
+    if(g) gameName = g;
+  }
+  function savePrefs(){ localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
+  function loadPrefs(){ try{ const raw = localStorage.getItem(PREFS_KEY); if(raw) prefs = JSON.parse(raw) || prefs; }catch{} }
+  function saveGame(){ localStorage.setItem(GAME_KEY, gameName); }
+
+  function renderStats(){
+    playerCount.textContent = state.order.length;
+    totalPlays.textContent = state.order.reduce((a,n)=> a + (state.players[n]?.total||0), 0);
+    selectedCount.textContent = selection.size;
+    const h = state.history.at(-1);
+    lastAction.textContent = h ? h.text : '—';
+    const need = state.order.reduce((acc,n)=> acc + ((state.players[n]?.total||0) < GOAL ? 1 : 0), 0);
+    needCount.textContent = need;
+    gameLabel.textContent = gameName || '—';
+  }
+
+  function normalizeName(s){ return (s||'').replace(/\s+/g,' ').trim(); }
+
+  function createTile(name, data){
+    const count = data.total||0;
+    const met = count >= GOAL;
+    const d = document.createElement('div');
+    d.className = 'tile ' + (met ? 'goal-met' : 'goal-miss');
+    if (selection.has(name)) d.classList.add('selected');
+    d.innerHTML = `<div class="name">${name}</div><div class="count-badge">${count}</div>`;
+    d.addEventListener('click', () => { if (selection.has(name)) selection.delete(name); else selection.add(name); render(); });
+    return d;
+  }
+
+  function sortedOrder(){
+    const list = [...state.order];
+    switch(prefs.sort){
+      case 'nameAsc': list.sort((a,b)=> a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'})); break;
+      case 'nameDesc': list.sort((a,b)=> b.localeCompare(a, undefined, {numeric:true, sensitivity:'base'})); break;
+      case 'countAsc': list.sort((a,b)=> (state.players[a]?.total||0) - (state.players[b]?.total||0) || a.localeCompare(b)); break;
+      case 'countDesc': list.sort((a,b)=> (state.players[b]?.total||0) - (state.players[a]?.total||0) || a.localeCompare(b)); break;
+    }
+    return list;
+  }
+
+  function render(){
+    grid.innerHTML = '';
+    const order = sortedOrder();
+    for(const n of order){
+      const d = state.players[n] || {total:0,q:[0,0,0,0]};
+      if (prefs.hideMet && (d.total||0) >= GOAL) continue;
+      grid.appendChild(createTile(n, d));
+    }
+    renderStats();
+  }
+
+  function addPlayer(name){
+    name = normalizeName(name);
+    if(!name) return;
+    if(state.order.some(n=> n.toLowerCase() === name.toLowerCase())) return;
+    state.players[name] = { total:0, q:[0,0,0,0] };
+    state.order.push(name);
+    save(); render();
+  }
+
+  function addFromInput(){
+    const value = nameInput.value || '';
+    if(value.trim()){
+      addPlayer(value);
+      nameInput.value='';
+      nameInput.focus({preventScroll:true});
+    }
+  }
+
+  function adjustQuarter(qIndex, delta){
+    if (selection.size === 0) return;
+    let affected = 0;
+    selection.forEach(n => {
+      const d = state.players[n];
+      if(!d) return;
+      const beforeQ = d.q[qIndex] || 0;
+      const beforeT = d.total || 0;
+      if(delta < 0){
+        if(beforeQ <= 0 || beforeT <= 0) return;
+      }
+      d.q[qIndex] = Math.max(0, beforeQ + delta);
+      d.total = Math.max(0, beforeT + delta);
+      affected++;
+    });
+    if(affected>0){
+      state.history.push({ text: `Q${qIndex+1} ${delta>0?'+1':'-1'} on ${affected} ${affected===1?'player':'players'}` });
+      save(); render();
+    }
+  }
+
+  function undoSelected(){
+    if (selection.size === 0) return;
+    let affected = 0;
+    selection.forEach(n => {
+      const d = state.players[n];
+      if(!d || !d.total) return;
+      // remove from the most recent non-zero quarter (Q4 -> Q1)
+      for(let q=3; q>=0; q--){
+        if((d.q[q]||0) > 0){
+          d.q[q] -= 1;
+          d.total -= 1;
+          affected++;
+          break;
+        }
+      }
+    });
+    if(affected>0){
+      state.history.push({ text: `Undo −1 on ${affected} ${affected===1?'player':'players'}` });
+      save(); render();
+    }
+  }
+
+  function reset(){
+    if(confirm('Zero all counts for this game (keep names)?')){
+      state.order.forEach(n=> { if(state.players[n]) { state.players[n].total = 0; state.players[n].q = [0,0,0,0]; } });
+      state.history = [];
+      save(); render();
+    }
+  }
+  function clearAll(){
+    if(!confirm('Remove ALL players and history? This cannot be undone.')) return;
+    state = { players:{}, order:[], history:[] };
+    selection.clear();
+    localStorage.removeItem(KEY);
+    save(); render();
+  }
+  function clearSelection(){ selection.clear(); render(); }
+
+  function exportCSV(){
+    const header = ['Game','Name','Total','Q1','Q2','Q3','Q4','RemainingTo15','MetGoal'];
+    const rows = [header];
+    state.order.forEach(n=>{
+      const d = state.players[n] || {total:0,q:[0,0,0,0]};
+      const t = d.total||0;
+      const q = d.q || [0,0,0,0];
+      rows.push([
+        gameName || '',
+        n,
+        String(t),
+        String(q[0]||0),
+        String(q[1]||0),
+        String(q[2]||0),
+        String(q[3]||0),
+        String(Math.max(0, GOAL - t)),
+        t>=GOAL ? 'Yes':'No'
+      ]);
+    });
+    const csv = rows.map(r => r.map(cell => /[",\n]/.test(cell) ? '"' + String(cell).replace(/"/g,'""') + '"' : String(cell)).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = (gameName ? gameName.replace(/[^\w\-]+/g,'_') + '_' : '') + 'player_tally.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Save/Restore roster (names only)
+  function saveRoster(){ localStorage.setItem(SAVED_KEY, JSON.stringify([...state.order])); alert('Roster saved.'); }
+  function restoreRoster(){
+    const raw = localStorage.getItem(SAVED_KEY);
+    if(!raw){ alert('No saved roster found yet. Use "Save Roster" first.'); return; }
+    let roster = [];
+    try{ roster = JSON.parse(raw) || []; }catch{}
+    if(roster.length === 0){ alert('Saved roster is empty.'); return; }
+    let added = 0;
+    roster.forEach(name => {
+      const nm = String(name);
+      if(!state.order.some(n=> n.toLowerCase() === nm.toLowerCase())){
+        state.order.push(nm);
+        state.players[nm] = { total:0, q:[0,0,0,0] };
+        added++;
+      }
+    });
+    if(added===0){ alert('All saved names are already present.'); }
+    save(); render();
+  }
+
+  // Events
+  document.getElementById('addForm').addEventListener('submit', e => { e.preventDefault(); addFromInput(); });
+  addBtn.addEventListener('click', addFromInput);
+  nameInput.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); addFromInput(); } });
+  gameInput.addEventListener('input', ()=>{ gameName = gameInput.value.trim(); saveGame(); renderStats(); });
+
+  hideMet.addEventListener('change',()=>{ prefs.hideMet=hideMet.checked; savePrefs(); render(); });
+  sortSelect.addEventListener('change',()=>{ prefs.sort=sortSelect.value; savePrefs(); render(); });
+  q1Btn.addEventListener('click', ()=>adjustQuarter(0, +1));
+  q2Btn.addEventListener('click', ()=>adjustQuarter(1, +1));
+  q3Btn.addEventListener('click', ()=>adjustQuarter(2, +1));
+  q4Btn.addEventListener('click', ()=>adjustQuarter(3, +1));
+  undoBtn.addEventListener('click', undoSelected);
+  clearSelBtn.addEventListener('click', clearSelection);
+  saveBtn.addEventListener('click', saveRoster);
+  restoreBtn.addEventListener('click', restoreRoster);
+  resetBtn.addEventListener('click', reset);
+  clearBtn.addEventListener('click', clearAll);
+  exportBtn.addEventListener('click', exportCSV);
+
+  // Init
+  load(); loadPrefs();
+  hideMet.checked = !!prefs.hideMet;
+  sortSelect.value = prefs.sort || 'nameAsc';
+  gameInput.value = gameName || '';
+  render();
+  setTimeout(()=> nameInput.focus({preventScroll:true}), 250);
+})();
 </script>
 </body>
 </html>
